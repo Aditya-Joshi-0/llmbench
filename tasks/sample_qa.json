@@ -1,0 +1,77 @@
+[
+  {
+    "input": "What is the capital of France?",
+    "expected_output": "Paris",
+    "metadata": {"difficulty": "easy", "domain": "geography"}
+  },
+  {
+    "input": "Who wrote the play Hamlet?",
+    "expected_output": "William Shakespeare",
+    "metadata": {"difficulty": "easy", "domain": "literature"}
+  },
+  {
+    "input": "What is the time complexity of quicksort in the average case?",
+    "expected_output": "O(n log n)",
+    "metadata": {"difficulty": "medium", "domain": "computer_science"}
+  },
+  {
+    "input": "What does the transformer architecture's attention mechanism compute?",
+    "expected_output": "Weighted sum of values using dot-product similarity between queries and keys",
+    "metadata": {"difficulty": "hard", "domain": "machine_learning"}
+  },
+  {
+    "input": "In which year did World War II end?",
+    "expected_output": "1945",
+    "metadata": {"difficulty": "easy", "domain": "history"}
+  },
+  {
+    "input": "What is Newton's Second Law of Motion?",
+    "expected_output": "Newton's Second Law states that force equals mass times acceleration, expressed as F = ma.",
+    "metadata": {"difficulty": "easy", "domain": "science"}
+  },
+  {
+    "input": "What is the quadratic formula used to solve ax2 + bx + c = 0?",
+    "expected_output": "x = (-b ± √(b2 - 4ac)) / (2a)",
+    "metadata": {"difficulty": "easy", "domain": "mathematics"}
+  },
+  {
+    "input": "What is overfitting in machine learning?",
+    "expected_output": "Overfitting is a modeling error where a model learns noise and details from the training data, resulting in poor generalization to new data.",
+    "metadata": {"difficulty": "medium", "domain": "computer_science"}
+  },
+  {
+    "input": "Name the three largest oceans on Earth in descending order of size.",
+    "expected_output": "Pacific Ocean, Atlantic Ocean, Indian Ocean.",
+    "metadata": {"difficulty": "easy", "domain": "geography"}
+  },
+  {
+    "input": "What is photosynthesis?",
+    "expected_output": "Photosynthesis is the process by which green plants convert light energy, carbon dioxide, and water into glucose and oxygen.",
+    "metadata": {"difficulty": "easy", "domain": "science"}
+  },
+  {
+    "input": "What were the main causes of World War I?",
+    "expected_output": "The main causes of World War I were militarism, alliances, imperialism, and nationalism.",
+    "metadata": {"difficulty": "medium", "domain": "history"}
+  },
+  {
+    "input": "What does the law of conservation of mass state?",
+    "expected_output": "The law of conservation of mass states that mass is neither created nor destroyed in a chemical reaction.",
+    "metadata": {"difficulty": "easy", "domain": "science"}
+  },
+  {
+    "input": "How does Earth differ from Mars in terms of atmosphere?",
+    "expected_output": "Earth has a dense atmosphere rich in nitrogen and oxygen, while Mars has a thin atmosphere primarily composed of carbon dioxide.",
+    "metadata": {"difficulty": "medium", "domain": "geography"}
+  },
+  {
+    "input": "What is precision in classification problems?",
+    "expected_output": "Precision is the ratio of true positive predictions to the total number of positive predictions, calculated as TP / (TP + FP).",
+    "metadata": {"difficulty": "medium", "domain": "computer_science"}
+  },
+  {
+    "input": "What is inflation?",
+    "expected_output": "Inflation is the rate at which the general level of prices for goods and services rises, reducing purchasing power.",
+    "metadata": {"difficulty": "easy", "domain": "economics"}
+  }
+]

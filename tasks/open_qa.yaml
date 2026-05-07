@@ -1,0 +1,13 @@
+# tasks/open_qa.yaml
+# Example task config for open-domain QA
+name: open_qa
+description: Open-domain question answering
+requires_context: false
+requires_expected_output: true
+default_metrics:
+  - exact_match
+  - f1
+  - rouge_l
+  - bertscore
+system_prompt: "Answer the question directly and concisely."
+prompt_template: "{{ input }}"

@@ -1,0 +1,38 @@
+[
+  {
+    "turns": [
+      {"role": "system", "content": "You are a helpful math tutor."},
+      {"role": "user",   "content": "What is 12 multiplied by 8?"},
+      {"role": "assistant", "content": "96", "expected_content": "96"},
+      {"role": "user",   "content": "Now divide that result by 4."},
+      {"role": "assistant", "content": "24", "expected_content": "24"},
+      {"role": "user",   "content": "What was the first number we calculated?"},
+      {"role": "assistant", "content": "96", "expected_content": "96"}
+    ],
+    "metadata": {"domain": "math", "difficulty": "easy", "tests_context_retention": true}
+  },
+  {
+    "turns": [
+      {"role": "system", "content": "You are a knowledgeable geography assistant."},
+      {"role": "user",   "content": "What is the capital of Japan?"},
+      {"role": "assistant", "content": "Tokyo", "expected_content": "Tokyo"},
+      {"role": "user",   "content": "What is the population of that city?"},
+      {"role": "assistant", "content": "Approximately 14 million in the city proper", "expected_content": "approximately 14 million"},
+      {"role": "user",   "content": "Is it in the northern or southern part of the country?"},
+      {"role": "assistant", "content": "Eastern central part", "expected_content": "eastern central"}
+    ],
+    "metadata": {"domain": "geography", "difficulty": "medium", "tests_context_retention": true}
+  },
+  {
+    "turns": [
+      {"role": "system", "content": "You are a Python programming assistant."},
+      {"role": "user",   "content": "How do I create a list in Python?"},
+      {"role": "assistant", "content": "Use square brackets: my_list = [1, 2, 3]", "expected_content": "square brackets"},
+      {"role": "user",   "content": "How do I add an item to it?"},
+      {"role": "assistant", "content": "Use the append method: my_list.append(4)", "expected_content": "append"},
+      {"role": "user",   "content": "What method removes the last item?"},
+      {"role": "assistant", "content": "Use pop(): my_list.pop()", "expected_content": "pop"}
+    ],
+    "metadata": {"domain": "programming", "difficulty": "easy"}
+  }
+]
