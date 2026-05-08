@@ -221,3 +221,6 @@ __marimo__/
 
 # Local DB files
 *.db
+
+# Untrack github workflows
+.github/workflows/

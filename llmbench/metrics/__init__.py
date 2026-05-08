@@ -168,7 +168,7 @@ def _ece(results: list["SampleResult"], n_bins: int = 10, **_) -> dict[str, floa
     n   = len(valid)
 
     for lo, hi in zip(bin_edges[:-1], bin_edges[1:]):
-        mask = mask = (confidences >= lo) & (confidences < hi if hi < 1.0 else confidences <= hi)
+        mask = (confidences >= lo) & (confidences < hi if hi < 1.0 else confidences <= hi)
         if mask.sum() == 0:
             continue
         bin_conf = confidences[mask].mean()

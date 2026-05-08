@@ -1,20 +1,21 @@
 # 🔬 LLMBench
 
-**LLM evaluation harness built from scratch.**
+**Production-grade LLM evaluation harness built from scratch.**
 
-LLMBench runs structured, reproducible evaluations across four metric families — lexical, semantic, LLM-as-judge, and calibration — stores every run, and diffs any two runs to surface regressions. Plug in any task type or metric in under 10 lines.
+LLMBench runs structured, reproducible evaluations across four metric families — lexical, semantic, LLM-as-judge, and calibration — stores every run, and diffs any two runs to detect regressions. Supports both single-turn and multi-turn conversation evals.
 
 ---
 
 ## Why LLMBench?
 
-Most teams swap models or update prompts and then *eyeball* outputs to decide if things got better. LLMBench gives you:
+Most teams swap models or update prompts and then *eyeball* outputs. LLMBench gives you:
 
-- **Four metric families** — not just ROUGE, but semantic similarity, LLM-as-judge scoring, and calibration (ECE)
-- **Regression tracking** — diff any two run IDs, get a structured report of what regressed
+- **18 metrics across 4 families** — lexical, semantic, LLM-as-judge, and ECE calibration
+- **Multi-turn conversation eval** — replays full chat histories, scores each turn
+- **Log-prob confidence extraction** — extracts calibrated confidence from token log-probs (OpenAI, Groq, vLLM)
+- **Regression tracking** — diff any two run IDs, fail CI if metrics drop > threshold
 - **Full run history** — every run stored with config, scores, and per-sample outputs
 - **Plugin architecture** — register custom tasks and metrics in 10 lines
-- **Any provider** — OpenAI, Groq, Anthropic, vLLM, Ollama via one unified interface
 - **FastAPI + CLI + Dashboard** — use it however you want
 
 ---
@@ -23,24 +24,37 @@ Most teams swap models or update prompts and then *eyeball* outputs to decide if
 
 ```bash
 pip install -e .
+export GROQ_API_KEY=your_key
 
-# Set your provider API key
-export GROQ_API_KEY=your_key_here
-
-# Run an eval
+# Single-turn eval
 llmbench run tasks/sample_qa.json \
     --task open_qa \
     --model groq/llama-3.3-70b-versatile \
-    --metrics exact_match,f1,rouge_l
+    --metrics exact_match,f1,rouge_l,ece
 
-# List all stored runs
+# Multi-turn conversation eval
+llmbench run-conv tasks/sample_conversations.json \
+    --model groq/llama-3.3-70b-versatile \
+    --judge groq/openai/gpt-oss-120b \
+    --metrics turn_exact_match,turn_f1,conversation_coherence
+
+# List stored runs
 llmbench list
 
-# Compare two runs (regression check)
+# Regression check (exits 1 if regression > 2%)
 llmbench compare <baseline_run_id> <candidate_run_id>
 
-# Launch dashboard
+# Per-sample inspection
+llmbench show <run_id> --samples --top 10
+
+# HTML report
+python -m llmbench.api.reporter <run_id> report.html
+
+# Dashboard
 streamlit run dashboard/app.py
+
+# REST API
+uvicorn llmbench.api.rest:app --reload --port 8080
 ```
 
 ---
@@ -50,26 +64,29 @@ streamlit run dashboard/app.py
 ```python
 from llmbench import build_runner, loader, ModelConfig
 
-# Load a dataset (JSON, CSV, HF Hub, or callable)
+# Single-turn
 dataset = loader.load("squad", task_type="open_qa", max_samples=100)
-
-# Build a runner
-runner = build_runner(
+runner  = build_runner(
     ModelConfig(provider="groq", model_id="llama-3.3-70b-versatile"),
     judge_config=ModelConfig(provider="groq", model_id="llama-3.3-70b-versatile"),
 )
+result = runner.run(dataset, metrics=["exact_match", "f1", "bertscore", "ece"])
 
-# Run the eval
-result = runner.run(dataset, metrics=["exact_match", "f1", "bertscore", "llm_relevance"])
-print(result.aggregate_scores)
+# Multi-turn
+from llmbench import build_conversation_runner, load_conversations_json
 
-# Save and compare
+dataset = load_conversations_json("tasks/sample_conversations.json")
+runner  = build_conversation_runner(
+    ModelConfig(provider="groq", model_id="llama-3.3-70b-versatile"),
+    judge_config=ModelConfig(provider="groq", model_id="llama-3.3-70b-versatile"),
+)
+result = runner.run(dataset, metrics=["turn_exact_match", "turn_f1", "conversation_coherence"])
+
+# Save + compare
 from llmbench.store.db import store, tracker
 store.save(result)
-
-# Later: compare to a previous run
-report = tracker.compare(baseline_run_id, result.run_id, threshold=0.02)
-print(report["regressions"])   # metrics that dropped > 2%
+report = tracker.compare(baseline_id, result.run_id, threshold=0.02)
+print(report["regressions"])
 ```
 
 ---
@@ -78,7 +95,7 @@ print(report["regressions"])   # metrics that dropped > 2%
 
 | Metric | Family | Notes |
 |--------|--------|-------|
-| `exact_match` | Lexical | Case/punct normalised |
+| `exact_match` | Lexical | Case + punctuation normalised |
 | `f1` | Lexical | Token-level F1 |
 | `rouge_1`, `rouge_2`, `rouge_l` | Lexical | ROUGE variants |
 | `bleu` | Lexical | Corpus BLEU |
@@ -88,62 +105,115 @@ print(report["regressions"])   # metrics that dropped > 2%
 | `llm_relevance` | LLM-judge | Question vs output |
 | `llm_coherence` | LLM-judge | Fluency + structure |
 | `llm_code_quality` | LLM-judge | Code correctness |
-| `ece` | Calibration | Requires confidence scores |
+| `ece` | Calibration | Expected Calibration Error from log-probs |
+| `turn_exact_match` | Multi-turn | Mean EM across conversation turns |
+| `turn_f1` | Multi-turn | Mean token F1 across turns |
+| `turn_rouge_l` | Multi-turn | Mean ROUGE-L across turns |
+| `conversation_coherence` | Multi-turn judge | LLM scores overall coherence |
+| `context_retention` | Multi-turn judge | LLM scores use of prior context |
 
-### Register a custom metric
+### Custom metric in 10 lines
 
 ```python
 from llmbench.core.registry import registry
 
-def my_length_metric(results, **_):
-    avg_len = sum(len(r.generated_output.split()) for r in results) / len(results)
-    return {"avg_output_length": avg_len}
+def avg_length(results, **_):
+    avg = sum(len(r.generated_output.split()) for r in results) / len(results)
+    return {"avg_output_words": avg}
 
-registry.register_metric(
-    "avg_output_length",
-    "Average word count of generated outputs",
-    fn=my_length_metric,
-    requires_expected=False,
-)
+registry.register_metric("avg_output_words", "Avg word count", fn=avg_length,
+                          requires_expected=False)
 ```
-
----
-
-## Supported Datasets
-
-| Source | Example |
-|--------|---------|
-| Local JSON/JSONL | `loader.load("data.json", task_type="open_qa")` |
-| Local CSV/TSV | `loader.load("data.csv", task_type="open_qa")` |
-| HF Hub (preset) | `loader.load("squad", task_type="open_qa", preset="squad")` |
-| HF Hub (custom cols) | `loader.load("my/repo", task_type="open_qa", input_col="q", output_col="a")` |
-| Python callable | `loader.load(my_generator_fn, task_type="open_qa")` |
-
-Field aliases are resolved automatically: `question/query/prompt` → `input`, `answer/label/target` → `expected_output`.
 
 ---
 
 ## Supported Providers
 
-| Provider | Slug format | Notes |
-|----------|-------------|-------|
-| Groq | `groq/llama-3.3-70b-versatile` | Recommended (fast + free tier) |
-| OpenAI | `openai/gpt-4o-mini` | |
-| Anthropic | `anthropic/claude-3-5-haiku-20241022` | |
-| vLLM | `vllm/my-model` | Set `base_url` in extra_params |
-| Ollama | `ollama/llama3` | Same as vLLM |
+| Provider | Slug | Log-probs | Notes |
+|----------|------|-----------|-------|
+| Groq | `groq/llama-3.3-70b-versatile` | ✅ | Free tier, fast |
+| Groq (namespaced) | `groq/openai/gpt-oss-120b` | ✅ | Model ID with slash |
+| OpenAI | `openai/gpt-4o-mini` | ✅ | |
+| Anthropic | `anthropic/claude-3-5-haiku-20241022` | ❌ | No logprobs API |
+| vLLM | `vllm/mistral-7b` | ✅ | Set `base_url` in extra_params |
+| Ollama | `ollama/llama3` | ✅ | Same as vLLM |
 
 ---
 
-## CLI Reference
+## Conversation Dataset Formats
+
+LLMBench auto-detects format from the JSON structure:
+
+```jsonc
+// Native (llmbench)
+{"turns": [{"role": "user", "content": "Hi"},
+           {"role": "assistant", "content": "Hello", "expected_content": "Hello"}]}
+
+// ShareGPT
+{"conversations": [{"from": "human", "value": "Hi"},
+                   {"from": "gpt",   "value": "Hello"}]}
+
+// OpenAI fine-tune
+{"messages": [{"role": "user",      "content": "Hi"},
+              {"role": "assistant", "content": "Hello"}]}
+```
+
+HuggingFace Hub datasets also supported:
+
+```python
+from llmbench.loaders.conversations import load_conversations_hf
+dataset = load_conversations_hf("HuggingFaceH4/ultrachat_200k", max_samples=50)
+```
+
+---
+
+## REST API
 
 ```
-llmbench run      --task --model [--judge] [--metrics] [--max-samples] [--tag key=val]
-llmbench list     [--dataset] [--model] [--task] [--limit]
-llmbench compare  <baseline_id> <candidate_id> [--threshold]
-llmbench show     <run_id> [--samples] [--top]
-llmbench metrics  List all registered metrics
-llmbench tasks    List all registered task types
+POST /runs                               Single-turn eval (async)
+POST /conversations/runs                 Multi-turn eval (async)
+GET  /runs/{id}/status                   Poll run status
+GET  /runs                               List runs (filter by dataset/model/task)
+GET  /runs/{id}                          Aggregate scores
+GET  /runs/{id}/samples                  Per-sample breakdown
+GET  /runs/{id}/report                   Download HTML report
+GET  /conversations/runs/{id}/turns      All turn records for a multi-turn run
+GET  /conversations/runs/{id}/turns/{conv_id}  One conversation's turns
+POST /runs/compare                       Regression diff
+GET  /runs/leaderboard/{dataset}         Model ranking
+GET  /tasks                              Registered tasks
+GET  /metrics                            Registered metrics
+GET  /health
+```
+
+Interactive docs at `http://localhost:8080/docs`.
+
+---
+
+## Dashboard Tabs
+
+| Tab | Contents |
+|-----|----------|
+| 📊 Overview | Run table + metric trend bar chart |
+| 🔁 Compare Runs | Regression diff table + radar chart |
+| 🔍 Sample Inspector | Per-sample table, confidence histogram, latency histogram |
+| 💬 Conversation View | Per-turn drill-down with expandable turns + score trend line |
+| 📈 Calibration | Reliability diagram (confidence vs accuracy) + ECE |
+| 🏆 Leaderboard | Model ranking by any metric |
+
+---
+
+## CI/CD Eval Gating
+
+```yaml
+# .github/workflows/eval_ci.yml already included
+# Add to your repo and set GROQ_API_KEY in GitHub Secrets.
+# On every PR:
+#   1. Runs unit tests (no API key needed)
+#   2. Runs eval on sample dataset
+#   3. Compares to cached baseline — fails PR if metric drops > 2%
+#   4. Posts score table as PR comment
+#   5. Uploads HTML report as build artifact
 ```
 
 ---
@@ -154,17 +224,33 @@ llmbench tasks    List all registered task types
 llmbench/
 ├── llmbench/
 │   ├── core/
-│   │   ├── schema.py       # EvalSample, EvalDataset, RunResult, ModelConfig
-│   │   ├── registry.py     # Task + metric plugin registry
-│   │   └── runner.py       # Async batch eval runner
-│   ├── loaders/            # JSON, CSV, HF Hub, callable loaders
-│   ├── providers/          # OpenAI, Groq, vLLM provider abstraction
-│   ├── metrics/            # Lexical, semantic, LLM-judge, calibration
-│   ├── store/              # SQLAlchemy results store + regression tracker
-│   └── api/                # FastAPI REST + Typer CLI
-├── dashboard/              # Streamlit dashboard
-├── tasks/                  # Built-in task YAML configs + sample datasets
-└── tests/                  # Pytest unit tests
+│   │   ├── schema.py          EvalSample, ConversationSample, RunResult, …
+│   │   ├── registry.py        Task + metric plugin registry (6 tasks, 18 metrics)
+│   │   ├── runner.py          Async single-turn eval runner
+│   │   └── runner_multiturn.py Async multi-turn conversation runner
+│   ├── loaders/
+│   │   ├── __init__.py        JSON, CSV, HF Hub, callable loaders
+│   │   └── conversations.py   Conversation loaders (native/ShareGPT/OpenAI)
+│   ├── providers/
+│   │   ├── base.py            Abstract provider + log-prob extraction
+│   │   └── anthropic_provider.py  Native Anthropic SDK implementation
+│   ├── metrics/
+│   │   └── __init__.py        All 18 metrics, auto-registered
+│   ├── store/
+│   │   └── db.py              SQLAlchemy store: runs + samples + turn_results
+│   └── api/
+│       ├── cli.py             Typer CLI: run, run-conv, list, compare, show, …
+│       ├── rest.py            FastAPI: single-turn + conversation endpoints
+│       └── reporter.py        HTML report with reliability diagram
+├── dashboard/
+│   └── app.py                 Streamlit: 6 tabs including Calibration + Conv view
+├── tasks/
+│   ├── sample_qa.json         5-sample QA test set
+│   └── sample_conversations.json  3-conversation multi-turn test set
+├── tests/
+│   └── test_core.py           79 unit tests, all offline
+└── .github/workflows/
+    └── eval_ci.yml            CI eval gating pipeline
 ```
 
 ---
@@ -173,17 +259,5 @@ llmbench/
 
 ```bash
 pip install pytest
-pytest tests/ -v
+pytest tests/test_core.py -v   # 79 tests, no API keys needed
 ```
-
-All tests run without API keys — providers are mocked at the metric layer.
-
----
-
-## Roadmap
-
-- [ ] Confidence score extraction from log-probs (for ECE on open-source models)
-- [ ] HTML report export (Jinja2 template)
-- [ ] GitHub Actions workflow for CI eval gating
-- [ ] Multi-turn conversation eval support
-- [ ] Async FastAPI REST endpoint
